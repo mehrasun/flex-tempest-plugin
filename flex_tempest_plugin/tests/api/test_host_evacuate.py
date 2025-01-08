@@ -46,13 +46,26 @@ class HostEvacuateTestJSON(base.BaseV2ComputeAdminTest):
         self.client.update_service(svc["id"], forced_down=True)
         self.servers_client.evacuate_server(server["id"])
 
-        status, after_evac_details, counter = None, None, 0
-        while status != "ACTIVE" and counter < 60:
-            time.sleep(1)
+        counter, after_evac_host = 0, None
+        while counter < 60:
             after_evac_details = self.servers_client.show_server(server["id"])
-            status = after_evac_details["server"]["status"]
+            after_evac_host = after_evac_details["server"]["OS-EXT-SRV-ATTR:host"]
+            if host_name != after_evac_host:
+                break
             counter += 1
-        self.assertNotEqual(host_name,
-                            after_evac_details["server"]["OS-EXT-SRV-ATTR:host"])
+            time.sleep(1)
+        self.assertNotEqual(host_name, after_evac_host)
         self.servers_client.delete_server(server["id"])
-        self.client.update_service(svc["id"], status="enabled", forced_down=False)
+
+        counter = 0
+        while counter < 60:
+            try:
+                self.client.update_service(svc["id"], status="enabled", forced_down=False)
+            except Exception as e:
+                pass
+            services = self.client.list_services(host=host_name)['services']
+            svc = [svc for svc in services if svc['host'] == host_name][0]
+            if svc["forced_down"] is False:
+                break
+            counter += 1
+            time.sleep(1)
